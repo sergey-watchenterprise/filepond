@@ -792,6 +792,12 @@ export interface FilePondBaseProps {
     maxLabelWidth?: number | null;
 
     /**
+     * The hold (long press) interval to wait before reordering the file
+     * @default 0
+     */
+    reorderHoldInterval?: number;
+
+    /**
      * Require the file to be successfully reverted before continuing.
      * @default false
      */
