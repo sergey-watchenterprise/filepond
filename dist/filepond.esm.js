@@ -1612,10 +1612,12 @@ const arrayRemove = (arr, index) => arr.splice(index, 1);
 const run = (cb, sync) => {
     if (sync) {
         cb();
-    } else if (document.hidden) {
-        Promise.resolve(1).then(cb);
     } else {
-        setTimeout(cb, 0);
+        // Use a microtask so destroy() finishes before the next mount.
+        // setTimeout(cb, 0) schedules a macrotask, which on Safari bfcache
+        // restore (and Turbolinks navigation) lets the next instance attach
+        // before the previous one tears down, causing missing-target errors.
+        Promise.resolve(1).then(cb);
     }
 };
 
