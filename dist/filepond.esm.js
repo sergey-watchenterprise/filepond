@@ -1838,6 +1838,7 @@ const defaultOptions = {
     allowRemove: [true, Type.BOOLEAN], // Allow user to remove a file
     allowProcess: [true, Type.BOOLEAN], // Allows user to process a file, when set to false, this removes the file upload button
     allowReorder: [false, Type.BOOLEAN], // Allow reordering of files
+    reorderHoldInterval: [0, Type.INT], // The hold (long press) interval to wait before reordering the file
     allowDirectoriesOnly: [false, Type.BOOLEAN], // Allow only selecting directories with browse (no support for filtering dnd at this point)
 
     // Try store file if `server` not set
@@ -5995,6 +5996,24 @@ const createDragHelper = items => {
     };
 };
 
+const onLongPress = (element, callback, interval) => {
+    let timer;
+
+    element.addEventListener('pointerdown', e => {
+        timer = setTimeout(() => {
+            timer = null;
+            callback(e);
+        }, interval);
+    });
+
+    function cancel() {
+        clearTimeout(timer);
+    }
+
+    element.addEventListener('pointerup', cancel);
+    element.addEventListener('pointermove', cancel);
+};
+
 const ITEM_TRANSLATE_SPRING = {
     type: 'spring',
     stiffness: 0.75,
@@ -6073,6 +6092,8 @@ const create$7 = ({ root, props }) => {
 
         const dragState = createDragHelper(root.query('GET_ACTIVE_ITEMS'));
 
+        root.element.closest('.filepond--root').dataset.isReordering = '1';
+
         root.dispatch('DID_GRAB_ITEM', { id: props.id, dragState });
 
         const drag = e => {
@@ -6119,6 +6140,8 @@ const create$7 = ({ root, props }) => {
 
             root.dispatch('DID_DROP_ITEM', { id: props.id, dragState });
 
+            delete root.element.closest('.filepond--root').dataset.isReordering;
+
             // start listening to clicks again
             if (removedActivateListener) {
                 setTimeout(() => root.element.addEventListener('click', root.ref.handleClick), 0);
@@ -6130,7 +6153,7 @@ const create$7 = ({ root, props }) => {
         document.addEventListener('pointerup', drop);
     };
 
-    root.element.addEventListener('pointerdown', grab);
+    onLongPress(root.element, grab, root.query('GET_REORDER_HOLD_INTERVAL'));
 };
 
 const route$1 = createRoute({
@@ -8102,8 +8125,6 @@ const scrollbarHeight = element => {
 
 const MAX_FILES_LIMIT = 1000000;
 
-const prevent = e => e.preventDefault();
-
 const create$e = ({ root, props }) => {
     const isSliderView = root.query('GET_SLIDER_VIEW');
 
@@ -8186,6 +8207,12 @@ const create$e = ({ root, props }) => {
     const canHover = window.matchMedia('(pointer: fine) and (hover: hover)').matches;
     const hasPointerEvents = 'PointerEvent' in window;
     if (root.query('GET_ALLOW_REORDER') && hasPointerEvents && !canHover) {
+        const prevent = e => {
+            if (root.element.dataset.isReordering) {
+                e.preventDefault();
+            }
+        };
+
         root.element.addEventListener('touchmove', prevent, { passive: false });
         root.element.addEventListener('gesturestart', prevent);
     }
