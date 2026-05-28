@@ -778,6 +778,20 @@ export interface FilePondBaseProps {
     allowDirectoriesOnly?: boolean;
 
     /**
+     * Render FilePond as a horizontal slider/carousel. Items lay out left-to-right
+     * and the drop label moves into the list, sized to fill the remaining space.
+     * @default false
+     */
+    sliderView?: boolean;
+
+    /**
+     * Caps the drop label's width in slider view when items are present.
+     * Leave unset to let the label fill the remaining horizontal space.
+     * @default null
+     */
+    maxLabelWidth?: number | null;
+
+    /**
      * Require the file to be successfully reverted before continuing.
      * @default false
      */
