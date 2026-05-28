@@ -6,6 +6,7 @@ import { Key } from '../enum/Key';
 const create = ({ root, props }) => {
     // create the label and link it to the file browser
     const label = createElement('label');
+    attr(label, 'class', 'filepond--drop-label-inner');
     attr(label, 'for', `filepond--browser-${props.id}`);
 
     // use for labeling file input (aria-labelledby on file input)
@@ -67,7 +68,7 @@ export const dropLabel = createView({
         },
     }),
     mixins: {
-        styles: ['opacity', 'translateX', 'translateY'],
+        styles: ['opacity', 'translateX', 'translateY', 'display', 'width'],
         animations: {
             opacity: { type: 'tween', duration: 150 },
             translateX: 'spring',

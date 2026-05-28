@@ -110,7 +110,8 @@ const applyStyles = (
         originX,
         originY,
         width,
-        height
+        height,
+        display
     }
 ) => {
     
@@ -181,6 +182,10 @@ const applyStyles = (
     // add width
     if (isDefined(width)) {
         styles += `width:${width}px;`;
+    }
+
+    if (isDefined(display)) {
+        styles += `display:${display ? 'flex' : 'none'};`;
     }
 
     // apply styles

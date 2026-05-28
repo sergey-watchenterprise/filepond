@@ -18,6 +18,7 @@ import { createElement } from '../../utils/createElement';
 import { createResponse } from '../../utils/createResponse';
 import { debounce } from '../../utils/debounce';
 import { isFile } from '../../utils/isFile';
+import { scrollbarHeight } from '../../utils/scrollbarHeight';
 import getItemsPerRow from '../utils/getItemsPerRow';
 
 const MAX_FILES_LIMIT = 1000000;
@@ -25,6 +26,8 @@ const MAX_FILES_LIMIT = 1000000;
 const prevent = e => e.preventDefault();
 
 const create = ({ root, props }) => {
+    const isSliderView = root.query('GET_SLIDER_VIEW');
+
     // Add id
     const id = root.query('GET_ID');
     if (id) {
@@ -42,17 +45,27 @@ const create = ({ root, props }) => {
             });
     }
 
-    // Field label
-    root.ref.label = root.appendChildView(
-        root.createChildView(dropLabel, {
-            ...props,
-            translateY: null,
-            caption: root.query('GET_LABEL_IDLE'),
-        })
+    // List of items
+    root.ref.list = root.appendChildView(
+        root.createChildView(listScroller, { ...props, translateY: null })
     );
 
-    // List of items
-    root.ref.list = root.appendChildView(root.createChildView(listScroller, { translateY: null }));
+    // Field label
+    if (isSliderView) {
+        root.element.classList.add('filepond--slider');
+        const viewList = root.ref.list.childViews[0];
+        if (viewList) {
+            root.ref.label = viewList.childViews.at(-1);
+        }
+    } else {
+        root.ref.label = root.appendChildView(
+            root.createChildView(dropLabel, {
+                ...props,
+                translateY: null,
+                caption: root.query('GET_LABEL_IDLE'),
+            })
+        );
+    }
 
     // Background panel
     root.ref.panel = root.appendChildView(root.createChildView(panel, { name: 'panel-root' }));
@@ -157,6 +170,7 @@ const write = ({ root, props, actions }) => {
     const aspectRatio = root.query('GET_PANEL_ASPECT_RATIO');
     const isMultiItem = root.query('GET_ALLOW_MULTIPLE');
     const totalItems = root.query('GET_TOTAL_ITEMS');
+    const isSliderView = root.query('GET_SLIDER_VIEW');
     const maxItems = isMultiItem ? root.query('GET_MAX_FILES') || MAX_FILES_LIMIT : 1;
     const atMaxCapacity = totalItems === maxItems;
 
@@ -170,6 +184,7 @@ const write = ({ root, props, actions }) => {
 
         // hide label
         label.opacity = 0;
+        label.display = false;
 
         if (isMultiItem) {
             label.translateY = -40;
@@ -186,14 +201,23 @@ const write = ({ root, props, actions }) => {
         label.opacity = 1;
         label.translateX = 0;
         label.translateY = 0;
+        label.display = true;
     }
 
     const listItemMargin = calculateListItemMargin(root);
 
     const listHeight = calculateListHeight(root);
 
-    const labelHeight = label.rect.element.height;
-    const currentLabelHeight = !isMultiItem || atMaxCapacity ? 0 : labelHeight;
+    let labelHeight = label.rect.element.height;
+
+    const itemList = list.childViews[0];
+    const scrollPadding =
+        itemList.element.scrollWidth > itemList.rect.element.width
+            ? scrollbarHeight(itemList.element)
+            : 0;
+
+    const currentLabelHeight =
+        !isMultiItem || atMaxCapacity || isSliderView ? scrollPadding : labelHeight;
 
     const listMarginTop = atMaxCapacity ? list.rect.element.marginTop : 0;
     const listMarginBottom = totalItems === 0 ? 0 : list.rect.element.marginBottom;
@@ -202,8 +226,10 @@ const write = ({ root, props, actions }) => {
     const boundsHeight = currentLabelHeight + listMarginTop + listHeight.bounds + listMarginBottom;
 
     // link list to label bottom position
-    list.translateY =
-        Math.max(0, currentLabelHeight - list.rect.element.marginTop) - listItemMargin.top;
+    if (!isSliderView) {
+        list.translateY =
+            Math.max(0, currentLabelHeight - list.rect.element.marginTop) - listItemMargin.top;
+    }
 
     if (aspectRatio) {
         // fixed aspect ratio
@@ -321,6 +347,10 @@ const write = ({ root, props, actions }) => {
     } else {
         // flexible height
 
+        if (isSliderView) {
+            labelHeight = label.rect.outer.height;
+        }
+
         // not a fixed height panel
         const itemMargin = totalItems > 0 ? listItemMargin.top + listItemMargin.bottom : 0;
         panel.scalable = true;
@@ -382,8 +412,12 @@ const calculateListHeight = root => {
     const verticalItemCount = children.length + newItem + removedItem;
     const itemsPerRow = getItemsPerRow(horizontalSpace, itemWidth);
 
+    if (root.query('GET_SLIDER_VIEW')) {
+        bounds = itemHeight;
+        visual = bounds;
+    }
     // stack
-    if (itemsPerRow === 1) {
+    else if (itemsPerRow === 1) {
         children.forEach(item => {
             const height = item.rect.element.height + itemVerticalMargin;
             bounds += height;

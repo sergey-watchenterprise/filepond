@@ -145,6 +145,9 @@ const route = createRoute({
     DID_UPDATE_PANEL_HEIGHT: ({ root, action }) => {
         root.height = action.height;
     },
+    DID_UPDATE_PANEL_WIDTH: ({ root, action }) => {
+        root.width = action.width;
+    },
 });
 
 const write = createRoute(
@@ -205,6 +208,14 @@ const write = createRoute(
         }
 
         root.ref.panel.height = root.height;
+
+        const isSliderView = root.query('GET_SLIDER_VIEW');
+        if (isSliderView) {
+            if (!root.width && root.rect.element.width > 0) {
+                root.width = root.rect.element.width;
+                root.ref.panel.width = root.rect.element.width;
+            }
+        }
     }
 );
 
@@ -227,7 +238,7 @@ export const item = createView({
             'dragOrigin',
             'dragOffset',
         ],
-        styles: ['translateX', 'translateY', 'scaleX', 'scaleY', 'opacity', 'height'],
+        styles: ['translateX', 'translateY', 'scaleX', 'scaleY', 'opacity', 'height', 'width'],
         animations: {
             scaleX: ITEM_SCALE_SPRING,
             scaleY: ITEM_SCALE_SPRING,
