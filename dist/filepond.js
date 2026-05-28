@@ -3764,6 +3764,7 @@
         allowRemove: [true, Type.BOOLEAN], // Allow user to remove a file
         allowProcess: [true, Type.BOOLEAN], // Allows user to process a file, when set to false, this removes the file upload button
         allowReorder: [false, Type.BOOLEAN], // Allow reordering of files
+        reorderHoldInterval: [0, Type.INT], // The hold (long press) interval to wait before reordering the file
         allowDirectoriesOnly: [false, Type.BOOLEAN], // Allow only selecting directories with browse (no support for filtering dnd at this point)
 
         // Try store file if `server` not set
@@ -8551,6 +8552,24 @@
         };
     };
 
+    var onLongPress = function onLongPress(element, callback, interval) {
+        var timer;
+
+        element.addEventListener('pointerdown', function(e) {
+            timer = setTimeout(function() {
+                timer = null;
+                callback(e);
+            }, interval);
+        });
+
+        function cancel() {
+            clearTimeout(timer);
+        }
+
+        element.addEventListener('pointerup', cancel);
+        element.addEventListener('pointermove', cancel);
+    };
+
     var ITEM_TRANSLATE_SPRING = {
         type: 'spring',
         stiffness: 0.75,
@@ -8635,6 +8654,8 @@
 
             var dragState = createDragHelper(root.query('GET_ACTIVE_ITEMS'));
 
+            root.element.closest('.filepond--root').dataset.isReordering = '1';
+
             root.dispatch('DID_GRAB_ITEM', { id: props.id, dragState: dragState });
 
             var drag = function drag(e) {
@@ -8682,6 +8703,8 @@
 
                 root.dispatch('DID_DROP_ITEM', { id: props.id, dragState: dragState });
 
+                delete root.element.closest('.filepond--root').dataset.isReordering;
+
                 // start listening to clicks again
                 if (removedActivateListener) {
                     setTimeout(function() {
@@ -8695,7 +8718,7 @@
             document.addEventListener('pointerup', drop);
         };
 
-        root.element.addEventListener('pointerdown', grab);
+        onLongPress(root.element, grab, root.query('GET_REORDER_HOLD_INTERVAL'));
     };
 
     var route$1 = createRoute({
@@ -10904,10 +10927,6 @@
 
     var MAX_FILES_LIMIT = 1000000;
 
-    var prevent = function prevent(e) {
-        return e.preventDefault();
-    };
-
     var create$e = function create(_ref) {
         var root = _ref.root,
             props = _ref.props;
@@ -11002,8 +11021,14 @@
         var canHover = window.matchMedia('(pointer: fine) and (hover: hover)').matches;
         var hasPointerEvents = 'PointerEvent' in window;
         if (root.query('GET_ALLOW_REORDER') && hasPointerEvents && !canHover) {
-            root.element.addEventListener('touchmove', prevent, { passive: false });
-            root.element.addEventListener('gesturestart', prevent);
+            var _prevent = function _prevent(e) {
+                if (root.element.dataset.isReordering) {
+                    e.preventDefault();
+                }
+            };
+
+            root.element.addEventListener('touchmove', _prevent, { passive: false });
+            root.element.addEventListener('gesturestart', _prevent);
         }
 
         // add credits

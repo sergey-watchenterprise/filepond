@@ -2,6 +2,7 @@ import { createView, createRoute } from '../frame/index';
 import { fileWrapper } from './fileWrapper';
 import { panel } from './panel';
 import { createDragHelper } from '../utils/createDragHelper';
+import { onLongPress } from '../../utils/onLongPress';
 
 const ITEM_TRANSLATE_SPRING = {
     type: 'spring',
@@ -81,6 +82,8 @@ const create = ({ root, props }) => {
 
         const dragState = createDragHelper(root.query('GET_ACTIVE_ITEMS'));
 
+        root.element.closest('.filepond--root').dataset.isReordering = '1';
+
         root.dispatch('DID_GRAB_ITEM', { id: props.id, dragState });
 
         const drag = e => {
@@ -127,6 +130,8 @@ const create = ({ root, props }) => {
 
             root.dispatch('DID_DROP_ITEM', { id: props.id, dragState });
 
+            delete root.element.closest('.filepond--root').dataset.isReordering;
+
             // start listening to clicks again
             if (removedActivateListener) {
                 setTimeout(() => root.element.addEventListener('click', root.ref.handleClick), 0);
@@ -138,7 +143,7 @@ const create = ({ root, props }) => {
         document.addEventListener('pointerup', drop);
     };
 
-    root.element.addEventListener('pointerdown', grab);
+    onLongPress(root.element, grab, root.query('GET_REORDER_HOLD_INTERVAL'));
 };
 
 const route = createRoute({
