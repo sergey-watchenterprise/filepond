@@ -102,7 +102,12 @@ export const defaultOptions = {
     // File size calculations, can set to 1024, this is only used for display, properties use file size base 1000
     fileSizeBase: [1000, Type.INT],
 
+    // Show Filepond as a slider
+    sliderView: [false, Type.BOOLEAN],
+    
     // Labels and status messages
+    maxLabelWidth: [null, Type.INT],
+
     labelFileSizeBytes: ['bytes', Type.STRING],
     labelFileSizeKilobytes: ['KB', Type.STRING],
     labelFileSizeMegabytes: ['MB', Type.STRING],

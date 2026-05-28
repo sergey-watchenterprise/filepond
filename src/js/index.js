@@ -10,6 +10,7 @@ import { Status as StatusEnum } from './app/enum/Status';
 import { FileOrigin as FileOriginEnum } from './app/enum/FileOrigin';
 import { isBrowser } from './utils/isBrowser';
 
+
 // feature detection used by supported() method
 const isOperaMini = () => Object.prototype.toString.call(window.operamini) === '[object OperaMini]';
 const hasPromises = () => 'Promise' in window;

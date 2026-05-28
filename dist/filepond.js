@@ -832,7 +832,8 @@
             originX = _ref2.originX,
             originY = _ref2.originY,
             width = _ref2.width,
-            height = _ref2.height;
+            height = _ref2.height,
+            display = _ref2.display;
 
         var transforms = '';
         var styles = '';
@@ -905,6 +906,10 @@
         // add width
         if (isDefined(width)) {
             styles += 'width:' + width + 'px;';
+        }
+
+        if (isDefined(display)) {
+            styles += 'display:' + (display ? 'flex' : 'none') + ';';
         }
 
         // apply styles
@@ -3797,7 +3802,12 @@
         // File size calculations, can set to 1024, this is only used for display, properties use file size base 1000
         fileSizeBase: [1000, Type.INT],
 
+        // Show Filepond as a slider
+        sliderView: [false, Type.BOOLEAN],
+
         // Labels and status messages
+        maxLabelWidth: [null, Type.INT],
+
         labelFileSizeBytes: ['bytes', Type.STRING],
         labelFileSizeKilobytes: ['KB', Type.STRING],
         labelFileSizeMegabytes: ['MB', Type.STRING],
@@ -8692,36 +8702,41 @@
                 action = _ref2.action;
             root.height = action.height;
         },
+        DID_UPDATE_PANEL_WIDTH: function DID_UPDATE_PANEL_WIDTH(_ref3) {
+            var root = _ref3.root,
+                action = _ref3.action;
+            root.width = action.width;
+        },
     });
 
     var write$4 = createRoute(
         {
-            DID_GRAB_ITEM: function DID_GRAB_ITEM(_ref3) {
-                var root = _ref3.root,
-                    props = _ref3.props;
+            DID_GRAB_ITEM: function DID_GRAB_ITEM(_ref4) {
+                var root = _ref4.root,
+                    props = _ref4.props;
                 props.dragOrigin = {
                     x: root.translateX,
                     y: root.translateY,
                 };
             },
-            DID_DRAG_ITEM: function DID_DRAG_ITEM(_ref4) {
-                var root = _ref4.root;
+            DID_DRAG_ITEM: function DID_DRAG_ITEM(_ref5) {
+                var root = _ref5.root;
                 root.element.dataset.dragState = 'drag';
             },
-            DID_DROP_ITEM: function DID_DROP_ITEM(_ref5) {
-                var root = _ref5.root,
-                    props = _ref5.props;
+            DID_DROP_ITEM: function DID_DROP_ITEM(_ref6) {
+                var root = _ref6.root,
+                    props = _ref6.props;
                 props.dragOffset = null;
                 props.dragOrigin = null;
                 root.element.dataset.dragState = 'drop';
             },
         },
 
-        function(_ref6) {
-            var root = _ref6.root,
-                actions = _ref6.actions,
-                props = _ref6.props,
-                shouldOptimize = _ref6.shouldOptimize;
+        function(_ref7) {
+            var root = _ref7.root,
+                actions = _ref7.actions,
+                props = _ref7.props,
+                shouldOptimize = _ref7.shouldOptimize;
             if (root.element.dataset.dragState === 'drop') {
                 if (root.scaleX <= 1) {
                     root.element.dataset.dragState = 'idle';
@@ -8766,15 +8781,23 @@
             }
 
             root.ref.panel.height = root.height;
+
+            var isSliderView = root.query('GET_SLIDER_VIEW');
+            if (isSliderView) {
+                if (!root.width && root.rect.element.width > 0) {
+                    root.width = root.rect.element.width;
+                    root.ref.panel.width = root.rect.element.width;
+                }
+            }
         }
     );
 
     var item = createView({
         create: create$7,
         write: write$4,
-        destroy: function destroy(_ref7) {
-            var root = _ref7.root,
-                props = _ref7.props;
+        destroy: function destroy(_ref8) {
+            var root = _ref8.root,
+                props = _ref8.props;
             root.element.removeEventListener('click', root.ref.handleClick);
             root.dispatch('RELEASE_ITEM', { query: props.id });
         },
@@ -8791,7 +8814,7 @@
                 'dragOffset',
             ],
 
-            styles: ['translateX', 'translateY', 'scaleX', 'scaleY', 'opacity', 'height'],
+            styles: ['translateX', 'translateY', 'scaleX', 'scaleY', 'opacity', 'height', 'width'],
             animations: {
                 scaleX: ITEM_SCALE_SPRING,
                 scaleY: ITEM_SCALE_SPRING,
@@ -8891,12 +8914,109 @@
         },
     };
 
+    var Key = {
+        ENTER: 13,
+        SPACE: 32,
+    };
+
     var create$8 = function create(_ref) {
-        var root = _ref.root;
+        var root = _ref.root,
+            props = _ref.props;
+        // create the label and link it to the file browser
+        var label = createElement$1('label');
+        attr(label, 'class', 'filepond--drop-label-inner');
+        attr(label, 'for', 'filepond--browser-' + props.id);
+
+        // use for labeling file input (aria-labelledby on file input)
+        attr(label, 'id', 'filepond--drop-label-' + props.id);
+
+        // handle keys
+        root.ref.handleKeyDown = function(e) {
+            var isActivationKey = e.keyCode === Key.ENTER || e.keyCode === Key.SPACE;
+            if (!isActivationKey) return;
+            // stops from triggering the element a second time
+            e.preventDefault();
+
+            // click link (will then in turn activate file input)
+            root.ref.label.click();
+        };
+
+        root.ref.handleClick = function(e) {
+            var isLabelClick = e.target === label || label.contains(e.target);
+
+            // don't want to click twice
+            if (isLabelClick) return;
+
+            // click link (will then in turn activate file input)
+            root.ref.label.click();
+        };
+
+        // attach events
+        label.addEventListener('keydown', root.ref.handleKeyDown);
+        root.element.addEventListener('click', root.ref.handleClick);
+
+        // update
+        updateLabelValue(label, props.caption);
+
+        // add!
+        root.appendChild(label);
+        root.ref.label = label;
+    };
+
+    var updateLabelValue = function updateLabelValue(label, value) {
+        label.innerHTML = value;
+        var clickable = label.querySelector('.filepond--label-action');
+        if (clickable) {
+            attr(clickable, 'tabindex', '0');
+        }
+        return value;
+    };
+
+    var dropLabel = createView({
+        name: 'drop-label',
+        ignoreRect: true,
+        create: create$8,
+        destroy: function destroy(_ref2) {
+            var root = _ref2.root;
+            root.ref.label.addEventListener('keydown', root.ref.handleKeyDown);
+            root.element.removeEventListener('click', root.ref.handleClick);
+        },
+        write: createRoute({
+            DID_SET_LABEL_IDLE: function DID_SET_LABEL_IDLE(_ref3) {
+                var root = _ref3.root,
+                    action = _ref3.action;
+                updateLabelValue(root.ref.label, action.value);
+            },
+        }),
+
+        mixins: {
+            styles: ['opacity', 'translateX', 'translateY', 'display', 'width'],
+            animations: {
+                opacity: { type: 'tween', duration: 150 },
+                translateX: 'spring',
+                translateY: 'spring',
+            },
+        },
+    });
+
+    var create$9 = function create(_ref) {
+        var root = _ref.root,
+            props = _ref.props;
         // need to set role to list as otherwise it won't be read as a list by VoiceOver
         attr(root.element, 'role', 'list');
 
         root.ref.lastItemSpanwDate = Date.now();
+
+        if (root.query('GET_SLIDER_VIEW')) {
+            root.ref.label = root.appendChildView(
+                root.createChildView(
+                    dropLabel,
+                    Object.assign({}, props, {
+                        caption: root.query('GET_LABEL_IDLE'),
+                    })
+                )
+            );
+        }
     };
 
     /**
@@ -9187,6 +9307,9 @@
             return child.rect.element.height;
         });
 
+        var isSliderView = root.query('GET_SLIDER_VIEW');
+        var maxLabelWidth = root.query('GET_MAX_LABEL_WIDTH');
+
         // sort based on current active items
         var children = root
             .query('GET_ACTIVE_ITEMS')
@@ -9198,6 +9321,17 @@
             .filter(function(item) {
                 return item;
             });
+
+        if (isSliderView) {
+            children.push(root.ref.label);
+
+            // flag the list while a removal animation is in flight so CSS can suppress
+            // the scrollbar that would otherwise flash during the layout transition
+            var hasRemoving = root.childViews.some(function(c) {
+                return c.markedForRemoval;
+            });
+            root.element.classList.toggle('filepond--list--animating', hasRemoving);
+        }
 
         // get index
         var dragIndex = dragCoordinates
@@ -9215,6 +9349,50 @@
         var addIndexOffset = 0;
 
         if (children.length === 0) return;
+
+        if (isSliderView) {
+            children.forEach(function(child, index) {
+                if (index === dragIndex) {
+                    dragIndexOffset = 1;
+                }
+
+                if (index === addIndex) {
+                    addIndexOffset += 1;
+                }
+
+                if (child.markedForRemoval && child.opacity < 0.5) {
+                    removeIndexOffset -= 1;
+                }
+
+                var offsetX = 0;
+
+                for (var i = 0; i < index; i++) {
+                    var prevRect = children[i].rect.element;
+                    var prevHorizontalMargin = prevRect.marginLeft + prevRect.marginRight;
+
+                    if (children[i].width) {
+                        offsetX += children[i].width + prevHorizontalMargin;
+                    }
+                }
+
+                if (children.length > 1 && maxLabelWidth) {
+                    root.ref.label.width = maxLabelWidth;
+                } else {
+                    root.ref.label.width = null;
+                }
+
+                if (child.markedForRemoval) return;
+
+                if (shouldOptimize) {
+                    child.translateX = null;
+                    child.translateY = null;
+                }
+
+                moveItem(child, offsetX, 0);
+            });
+
+            return;
+        }
 
         var childRect = children[0].rect.element;
         var itemVerticalMargin = childRect.marginTop + childRect.marginBottom;
@@ -9322,7 +9500,7 @@
     };
 
     var list = createView({
-        create: create$8,
+        create: create$9,
         write: write$5,
         tag: 'ul',
         name: 'list',
@@ -9343,10 +9521,10 @@
         },
     });
 
-    var create$9 = function create(_ref) {
+    var create$a = function create(_ref) {
         var root = _ref.root,
             props = _ref.props;
-        root.ref.list = root.appendChildView(root.createChildView(list));
+        root.ref.list = root.appendChildView(root.createChildView(list, props));
         props.dragCoordinates = null;
         props.overflowing = false;
     };
@@ -9406,7 +9584,7 @@
     };
 
     var listScroller = createView({
-        create: create$9,
+        create: create$a,
         write: write$6,
         name: 'list-scroller',
         mixins: {
@@ -9456,7 +9634,7 @@
         }
     };
 
-    var create$a = function create(_ref) {
+    var create$b = function create(_ref) {
         var root = _ref.root,
             props = _ref.props;
         // set id so can be referenced from outside labels
@@ -9619,7 +9797,7 @@
             type: 'file',
         },
 
-        create: create$a,
+        create: create$b,
         destroy: function destroy(_ref10) {
             var root = _ref10.root;
             root.element.removeEventListener('change', root.ref.handleChange);
@@ -9637,90 +9815,6 @@
             DID_SET_CAPTURE_METHOD: setCaptureMethod,
             DID_SET_REQUIRED: toggleRequired,
         }),
-    });
-
-    var Key = {
-        ENTER: 13,
-        SPACE: 32,
-    };
-
-    var create$b = function create(_ref) {
-        var root = _ref.root,
-            props = _ref.props;
-        // create the label and link it to the file browser
-        var label = createElement$1('label');
-        attr(label, 'for', 'filepond--browser-' + props.id);
-
-        // use for labeling file input (aria-labelledby on file input)
-        attr(label, 'id', 'filepond--drop-label-' + props.id);
-
-        // handle keys
-        root.ref.handleKeyDown = function(e) {
-            var isActivationKey = e.keyCode === Key.ENTER || e.keyCode === Key.SPACE;
-            if (!isActivationKey) return;
-            // stops from triggering the element a second time
-            e.preventDefault();
-
-            // click link (will then in turn activate file input)
-            root.ref.label.click();
-        };
-
-        root.ref.handleClick = function(e) {
-            var isLabelClick = e.target === label || label.contains(e.target);
-
-            // don't want to click twice
-            if (isLabelClick) return;
-
-            // click link (will then in turn activate file input)
-            root.ref.label.click();
-        };
-
-        // attach events
-        label.addEventListener('keydown', root.ref.handleKeyDown);
-        root.element.addEventListener('click', root.ref.handleClick);
-
-        // update
-        updateLabelValue(label, props.caption);
-
-        // add!
-        root.appendChild(label);
-        root.ref.label = label;
-    };
-
-    var updateLabelValue = function updateLabelValue(label, value) {
-        label.innerHTML = value;
-        var clickable = label.querySelector('.filepond--label-action');
-        if (clickable) {
-            attr(clickable, 'tabindex', '0');
-        }
-        return value;
-    };
-
-    var dropLabel = createView({
-        name: 'drop-label',
-        ignoreRect: true,
-        create: create$b,
-        destroy: function destroy(_ref2) {
-            var root = _ref2.root;
-            root.ref.label.addEventListener('keydown', root.ref.handleKeyDown);
-            root.element.removeEventListener('click', root.ref.handleClick);
-        },
-        write: createRoute({
-            DID_SET_LABEL_IDLE: function DID_SET_LABEL_IDLE(_ref3) {
-                var root = _ref3.root,
-                    action = _ref3.action;
-                updateLabelValue(root.ref.label, action.value);
-            },
-        }),
-
-        mixins: {
-            styles: ['opacity', 'translateX', 'translateY'],
-            animations: {
-                opacity: { type: 'tween', duration: 150 },
-                translateX: 'spring',
-                translateY: 'spring',
-            },
-        },
     });
 
     var blob = createView({
@@ -10802,6 +10896,10 @@
         };
     };
 
+    var scrollbarHeight = function scrollbarHeight(element) {
+        return element.offsetHeight - element.clientHeight;
+    };
+
     var MAX_FILES_LIMIT = 1000000;
 
     var prevent = function prevent(e) {
@@ -10811,6 +10909,8 @@
     var create$e = function create(_ref) {
         var root = _ref.root,
             props = _ref.props;
+        var isSliderView = root.query('GET_SLIDER_VIEW');
+
         // Add id
         var id = root.query('GET_ID');
         if (id) {
@@ -10830,21 +10930,29 @@
                 });
         }
 
-        // Field label
-        root.ref.label = root.appendChildView(
-            root.createChildView(
-                dropLabel,
-                Object.assign({}, props, {
-                    translateY: null,
-                    caption: root.query('GET_LABEL_IDLE'),
-                })
-            )
-        );
-
         // List of items
         root.ref.list = root.appendChildView(
-            root.createChildView(listScroller, { translateY: null })
+            root.createChildView(listScroller, Object.assign({}, props, { translateY: null }))
         );
+
+        // Field label
+        if (isSliderView) {
+            root.element.classList.add('filepond--slider');
+            var viewList = root.ref.list.childViews[0];
+            if (viewList) {
+                root.ref.label = viewList.childViews.at(-1);
+            }
+        } else {
+            root.ref.label = root.appendChildView(
+                root.createChildView(
+                    dropLabel,
+                    Object.assign({}, props, {
+                        translateY: null,
+                        caption: root.query('GET_LABEL_IDLE'),
+                    })
+                )
+            );
+        }
 
         // Background panel
         root.ref.panel = root.appendChildView(root.createChildView(panel, { name: 'panel-root' }));
@@ -10968,6 +11076,7 @@
         var aspectRatio = root.query('GET_PANEL_ASPECT_RATIO');
         var isMultiItem = root.query('GET_ALLOW_MULTIPLE');
         var totalItems = root.query('GET_TOTAL_ITEMS');
+        var isSliderView = root.query('GET_SLIDER_VIEW');
         var maxItems = isMultiItem ? root.query('GET_MAX_FILES') || MAX_FILES_LIMIT : 1;
         var atMaxCapacity = totalItems === maxItems;
 
@@ -10983,6 +11092,7 @@
 
             // hide label
             label.opacity = 0;
+            label.display = false;
 
             if (isMultiItem) {
                 label.translateY = -40;
@@ -10999,6 +11109,7 @@
             label.opacity = 1;
             label.translateX = 0;
             label.translateY = 0;
+            label.display = true;
         }
 
         var listItemMargin = calculateListItemMargin(root);
@@ -11006,7 +11117,15 @@
         var listHeight = calculateListHeight(root);
 
         var labelHeight = label.rect.element.height;
-        var currentLabelHeight = !isMultiItem || atMaxCapacity ? 0 : labelHeight;
+
+        var itemList = list.childViews[0];
+        var scrollPadding =
+            itemList.element.scrollWidth > itemList.rect.element.width
+                ? scrollbarHeight(itemList.element)
+                : 0;
+
+        var currentLabelHeight =
+            !isMultiItem || atMaxCapacity || isSliderView ? scrollPadding : labelHeight;
 
         var listMarginTop = atMaxCapacity ? list.rect.element.marginTop : 0;
         var listMarginBottom = totalItems === 0 ? 0 : list.rect.element.marginBottom;
@@ -11017,8 +11136,10 @@
             currentLabelHeight + listMarginTop + listHeight.bounds + listMarginBottom;
 
         // link list to label bottom position
-        list.translateY =
-            Math.max(0, currentLabelHeight - list.rect.element.marginTop) - listItemMargin.top;
+        if (!isSliderView) {
+            list.translateY =
+                Math.max(0, currentLabelHeight - list.rect.element.marginTop) - listItemMargin.top;
+        }
 
         if (aspectRatio) {
             // fixed aspect ratio
@@ -11136,6 +11257,10 @@
         } else {
             // flexible height
 
+            if (isSliderView) {
+                labelHeight = label.rect.outer.height;
+            }
+
             // not a fixed height panel
             var itemMargin = totalItems > 0 ? listItemMargin.top + listItemMargin.bottom : 0;
             panel.scalable = true;
@@ -11207,8 +11332,12 @@
         var verticalItemCount = children.length + newItem + removedItem;
         var itemsPerRow = getItemsPerRow(horizontalSpace, itemWidth);
 
+        if (root.query('GET_SLIDER_VIEW')) {
+            bounds = itemHeight;
+            visual = bounds;
+        }
         // stack
-        if (itemsPerRow === 1) {
+        else if (itemsPerRow === 1) {
             children.forEach(function(item) {
                 var height = item.rect.element.height + itemVerticalMargin;
                 bounds += height;

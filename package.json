@@ -10,7 +10,7 @@
     "homepage": "https://pqina.nl/filepond/",
     "repository": "pqina/filepond",
     "main": "dist/filepond.js",
-    "browser": "dist/filepond.js",
+    "browser": "dist/filepond.esm.js",
     "module": "dist/filepond.esm.js",
     "keywords": [
         "javascript",

@@ -2,7 +2,7 @@ import { createView, createRoute } from '../frame/index';
 import { list } from './list';
 
 const create = ({ root, props }) => {
-    root.ref.list = root.appendChildView(root.createChildView(list));
+    root.ref.list = root.appendChildView(root.createChildView(list, props));
     props.dragCoordinates = null;
     props.overflowing = false;
 };

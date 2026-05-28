@@ -5,12 +5,22 @@ import { attr } from '../../utils/attr';
 import { getItemIndexByPosition } from '../utils/getItemIndexByPosition';
 import { dropAreaDimensions } from '../utils/dropAreaDimensions';
 import getItemsPerRow from '../utils/getItemsPerRow';
+import { dropLabel } from './dropLabel';
 
-const create = ({ root }) => {
+const create = ({ root, props }) => {
     // need to set role to list as otherwise it won't be read as a list by VoiceOver
     attr(root.element, 'role', 'list');
 
     root.ref.lastItemSpanwDate = Date.now();
+
+    if (root.query('GET_SLIDER_VIEW')) {
+        root.ref.label = root.appendChildView(
+            root.createChildView(dropLabel, {
+                ...props,
+                caption: root.query('GET_LABEL_IDLE'),
+            })
+        );
+    }
 };
 
 /**
@@ -267,11 +277,23 @@ const write = ({ root, props, actions, shouldOptimize }) => {
     // only draw children that have dimensions
     const visibleChildren = root.childViews.filter(child => child.rect.element.height);
 
+    const isSliderView = root.query('GET_SLIDER_VIEW');
+    const maxLabelWidth = root.query('GET_MAX_LABEL_WIDTH');
+
     // sort based on current active items
     const children = root
         .query('GET_ACTIVE_ITEMS')
         .map(item => visibleChildren.find(child => child.id === item.id))
         .filter(item => item);
+
+    if (isSliderView) {
+        children.push(root.ref.label);
+
+        // flag the list while a removal animation is in flight so CSS can suppress
+        // the scrollbar that would otherwise flash during the layout transition
+        const hasRemoving = root.childViews.some(c => c.markedForRemoval);
+        root.element.classList.toggle('filepond--list--animating', hasRemoving);
+    }
 
     // get index
     const dragIndex = dragCoordinates
@@ -289,6 +311,50 @@ const write = ({ root, props, actions, shouldOptimize }) => {
     let addIndexOffset = 0;
 
     if (children.length === 0) return;
+
+    if (isSliderView) {
+        children.forEach((child, index) => {
+            if (index === dragIndex) {
+                dragIndexOffset = 1;
+            }
+
+            if (index === addIndex) {
+                addIndexOffset += 1;
+            }
+
+            if (child.markedForRemoval && child.opacity < 0.5) {
+                removeIndexOffset -= 1;
+            }
+
+            let offsetX = 0;
+
+            for (let i = 0; i < index; i++) {
+                const prevRect = children[i].rect.element;
+                const prevHorizontalMargin = prevRect.marginLeft + prevRect.marginRight;
+
+                if (children[i].width) {
+                    offsetX += children[i].width + prevHorizontalMargin;
+                }
+            }
+
+            if (children.length > 1 && maxLabelWidth) {
+                root.ref.label.width = maxLabelWidth;
+            } else {
+                root.ref.label.width = null;
+            }
+
+            if (child.markedForRemoval) return;
+
+            if (shouldOptimize) {
+                child.translateX = null;
+                child.translateY = null;
+            }
+
+            moveItem(child, offsetX, 0);
+        });
+
+        return;
+    }
 
     const childRect = children[0].rect.element;
     const itemVerticalMargin = childRect.marginTop + childRect.marginBottom;

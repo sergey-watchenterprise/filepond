@@ -723,6 +723,7 @@ const applyStyles = (
         originY,
         width,
         height,
+        display,
     }
 ) => {
     let transforms = '';
@@ -792,6 +793,10 @@ const applyStyles = (
     // add width
     if (isDefined(width)) {
         styles += `width:${width}px;`;
+    }
+
+    if (isDefined(display)) {
+        styles += `display:${display ? 'flex' : 'none'};`;
     }
 
     // apply styles
@@ -1871,7 +1876,12 @@ const defaultOptions = {
     // File size calculations, can set to 1024, this is only used for display, properties use file size base 1000
     fileSizeBase: [1000, Type.INT],
 
+    // Show Filepond as a slider
+    sliderView: [false, Type.BOOLEAN],
+
     // Labels and status messages
+    maxLabelWidth: [null, Type.INT],
+
     labelFileSizeBytes: ['bytes', Type.STRING],
     labelFileSizeKilobytes: ['KB', Type.STRING],
     labelFileSizeMegabytes: ['MB', Type.STRING],
@@ -6125,6 +6135,9 @@ const route$1 = createRoute({
     DID_UPDATE_PANEL_HEIGHT: ({ root, action }) => {
         root.height = action.height;
     },
+    DID_UPDATE_PANEL_WIDTH: ({ root, action }) => {
+        root.width = action.width;
+    },
 });
 
 const write$4 = createRoute(
@@ -6185,6 +6198,14 @@ const write$4 = createRoute(
         }
 
         root.ref.panel.height = root.height;
+
+        const isSliderView = root.query('GET_SLIDER_VIEW');
+        if (isSliderView) {
+            if (!root.width && root.rect.element.width > 0) {
+                root.width = root.rect.element.width;
+                root.ref.panel.width = root.rect.element.width;
+            }
+        }
     }
 );
 
@@ -6207,7 +6228,7 @@ const item = createView({
             'dragOrigin',
             'dragOffset',
         ],
-        styles: ['translateX', 'translateY', 'scaleX', 'scaleY', 'opacity', 'height'],
+        styles: ['translateX', 'translateY', 'scaleX', 'scaleY', 'opacity', 'height', 'width'],
         animations: {
             scaleX: ITEM_SCALE_SPRING,
             scaleY: ITEM_SCALE_SPRING,
@@ -6307,11 +6328,99 @@ const dropAreaDimensions = {
     },
 };
 
-const create$8 = ({ root }) => {
+const Key = {
+    ENTER: 13,
+    SPACE: 32,
+};
+
+const create$8 = ({ root, props }) => {
+    // create the label and link it to the file browser
+    const label = createElement$1('label');
+    attr(label, 'class', 'filepond--drop-label-inner');
+    attr(label, 'for', `filepond--browser-${props.id}`);
+
+    // use for labeling file input (aria-labelledby on file input)
+    attr(label, 'id', `filepond--drop-label-${props.id}`);
+
+    // handle keys
+    root.ref.handleKeyDown = e => {
+        const isActivationKey = e.keyCode === Key.ENTER || e.keyCode === Key.SPACE;
+        if (!isActivationKey) return;
+        // stops from triggering the element a second time
+        e.preventDefault();
+
+        // click link (will then in turn activate file input)
+        root.ref.label.click();
+    };
+
+    root.ref.handleClick = e => {
+        const isLabelClick = e.target === label || label.contains(e.target);
+
+        // don't want to click twice
+        if (isLabelClick) return;
+
+        // click link (will then in turn activate file input)
+        root.ref.label.click();
+    };
+
+    // attach events
+    label.addEventListener('keydown', root.ref.handleKeyDown);
+    root.element.addEventListener('click', root.ref.handleClick);
+
+    // update
+    updateLabelValue(label, props.caption);
+
+    // add!
+    root.appendChild(label);
+    root.ref.label = label;
+};
+
+const updateLabelValue = (label, value) => {
+    label.innerHTML = value;
+    const clickable = label.querySelector('.filepond--label-action');
+    if (clickable) {
+        attr(clickable, 'tabindex', '0');
+    }
+    return value;
+};
+
+const dropLabel = createView({
+    name: 'drop-label',
+    ignoreRect: true,
+    create: create$8,
+    destroy: ({ root }) => {
+        root.ref.label.addEventListener('keydown', root.ref.handleKeyDown);
+        root.element.removeEventListener('click', root.ref.handleClick);
+    },
+    write: createRoute({
+        DID_SET_LABEL_IDLE: ({ root, action }) => {
+            updateLabelValue(root.ref.label, action.value);
+        },
+    }),
+    mixins: {
+        styles: ['opacity', 'translateX', 'translateY', 'display', 'width'],
+        animations: {
+            opacity: { type: 'tween', duration: 150 },
+            translateX: 'spring',
+            translateY: 'spring',
+        },
+    },
+});
+
+const create$9 = ({ root, props }) => {
     // need to set role to list as otherwise it won't be read as a list by VoiceOver
     attr(root.element, 'role', 'list');
 
     root.ref.lastItemSpanwDate = Date.now();
+
+    if (root.query('GET_SLIDER_VIEW')) {
+        root.ref.label = root.appendChildView(
+            root.createChildView(dropLabel, {
+                ...props,
+                caption: root.query('GET_LABEL_IDLE'),
+            })
+        );
+    }
 };
 
 /**
@@ -6566,11 +6675,23 @@ const write$5 = ({ root, props, actions, shouldOptimize }) => {
     // only draw children that have dimensions
     const visibleChildren = root.childViews.filter(child => child.rect.element.height);
 
+    const isSliderView = root.query('GET_SLIDER_VIEW');
+    const maxLabelWidth = root.query('GET_MAX_LABEL_WIDTH');
+
     // sort based on current active items
     const children = root
         .query('GET_ACTIVE_ITEMS')
         .map(item => visibleChildren.find(child => child.id === item.id))
         .filter(item => item);
+
+    if (isSliderView) {
+        children.push(root.ref.label);
+
+        // flag the list while a removal animation is in flight so CSS can suppress
+        // the scrollbar that would otherwise flash during the layout transition
+        const hasRemoving = root.childViews.some(c => c.markedForRemoval);
+        root.element.classList.toggle('filepond--list--animating', hasRemoving);
+    }
 
     // get index
     const dragIndex = dragCoordinates
@@ -6588,6 +6709,50 @@ const write$5 = ({ root, props, actions, shouldOptimize }) => {
     let addIndexOffset = 0;
 
     if (children.length === 0) return;
+
+    if (isSliderView) {
+        children.forEach((child, index) => {
+            if (index === dragIndex) {
+                dragIndexOffset = 1;
+            }
+
+            if (index === addIndex) {
+                addIndexOffset += 1;
+            }
+
+            if (child.markedForRemoval && child.opacity < 0.5) {
+                removeIndexOffset -= 1;
+            }
+
+            let offsetX = 0;
+
+            for (let i = 0; i < index; i++) {
+                const prevRect = children[i].rect.element;
+                const prevHorizontalMargin = prevRect.marginLeft + prevRect.marginRight;
+
+                if (children[i].width) {
+                    offsetX += children[i].width + prevHorizontalMargin;
+                }
+            }
+
+            if (children.length > 1 && maxLabelWidth) {
+                root.ref.label.width = maxLabelWidth;
+            } else {
+                root.ref.label.width = null;
+            }
+
+            if (child.markedForRemoval) return;
+
+            if (shouldOptimize) {
+                child.translateX = null;
+                child.translateY = null;
+            }
+
+            moveItem(child, offsetX, 0);
+        });
+
+        return;
+    }
 
     const childRect = children[0].rect.element;
     const itemVerticalMargin = childRect.marginTop + childRect.marginBottom;
@@ -6694,7 +6859,7 @@ const filterSetItemActions = (child, actions) =>
     });
 
 const list = createView({
-    create: create$8,
+    create: create$9,
     write: write$5,
     tag: 'ul',
     name: 'list',
@@ -6712,8 +6877,8 @@ const list = createView({
     },
 });
 
-const create$9 = ({ root, props }) => {
-    root.ref.list = root.appendChildView(root.createChildView(list));
+const create$a = ({ root, props }) => {
+    root.ref.list = root.appendChildView(root.createChildView(list, props));
     props.dragCoordinates = null;
     props.overflowing = false;
 };
@@ -6765,7 +6930,7 @@ const write$6 = ({ root, props, actions }) => {
 };
 
 const listScroller = createView({
-    create: create$9,
+    create: create$a,
     write: write$6,
     name: 'list-scroller',
     mixins: {
@@ -6814,7 +6979,7 @@ const resetFileInput = input => {
     }
 };
 
-const create$a = ({ root, props }) => {
+const create$b = ({ root, props }) => {
     // set id so can be referenced from outside labels
     root.element.id = `filepond--browser-${props.id}`;
 
@@ -6945,7 +7110,7 @@ const browser = createView({
     attributes: {
         type: 'file',
     },
-    create: create$a,
+    create: create$b,
     destroy: ({ root }) => {
         root.element.removeEventListener('change', root.ref.handleChange);
     },
@@ -6962,84 +7127,6 @@ const browser = createView({
         DID_SET_CAPTURE_METHOD: setCaptureMethod,
         DID_SET_REQUIRED: toggleRequired,
     }),
-});
-
-const Key = {
-    ENTER: 13,
-    SPACE: 32,
-};
-
-const create$b = ({ root, props }) => {
-    // create the label and link it to the file browser
-    const label = createElement$1('label');
-    attr(label, 'for', `filepond--browser-${props.id}`);
-
-    // use for labeling file input (aria-labelledby on file input)
-    attr(label, 'id', `filepond--drop-label-${props.id}`);
-
-    // handle keys
-    root.ref.handleKeyDown = e => {
-        const isActivationKey = e.keyCode === Key.ENTER || e.keyCode === Key.SPACE;
-        if (!isActivationKey) return;
-        // stops from triggering the element a second time
-        e.preventDefault();
-
-        // click link (will then in turn activate file input)
-        root.ref.label.click();
-    };
-
-    root.ref.handleClick = e => {
-        const isLabelClick = e.target === label || label.contains(e.target);
-
-        // don't want to click twice
-        if (isLabelClick) return;
-
-        // click link (will then in turn activate file input)
-        root.ref.label.click();
-    };
-
-    // attach events
-    label.addEventListener('keydown', root.ref.handleKeyDown);
-    root.element.addEventListener('click', root.ref.handleClick);
-
-    // update
-    updateLabelValue(label, props.caption);
-
-    // add!
-    root.appendChild(label);
-    root.ref.label = label;
-};
-
-const updateLabelValue = (label, value) => {
-    label.innerHTML = value;
-    const clickable = label.querySelector('.filepond--label-action');
-    if (clickable) {
-        attr(clickable, 'tabindex', '0');
-    }
-    return value;
-};
-
-const dropLabel = createView({
-    name: 'drop-label',
-    ignoreRect: true,
-    create: create$b,
-    destroy: ({ root }) => {
-        root.ref.label.addEventListener('keydown', root.ref.handleKeyDown);
-        root.element.removeEventListener('click', root.ref.handleClick);
-    },
-    write: createRoute({
-        DID_SET_LABEL_IDLE: ({ root, action }) => {
-            updateLabelValue(root.ref.label, action.value);
-        },
-    }),
-    mixins: {
-        styles: ['opacity', 'translateX', 'translateY'],
-        animations: {
-            opacity: { type: 'tween', duration: 150 },
-            translateX: 'spring',
-            translateY: 'spring',
-        },
-    },
 });
 
 const blob = createView({
@@ -8007,11 +8094,17 @@ const debounce = (func, interval = 16, immidiateOnly = true) => {
     };
 };
 
+const scrollbarHeight = element => {
+    return element.offsetHeight - element.clientHeight;
+};
+
 const MAX_FILES_LIMIT = 1000000;
 
 const prevent = e => e.preventDefault();
 
 const create$e = ({ root, props }) => {
+    const isSliderView = root.query('GET_SLIDER_VIEW');
+
     // Add id
     const id = root.query('GET_ID');
     if (id) {
@@ -8029,17 +8122,27 @@ const create$e = ({ root, props }) => {
             });
     }
 
-    // Field label
-    root.ref.label = root.appendChildView(
-        root.createChildView(dropLabel, {
-            ...props,
-            translateY: null,
-            caption: root.query('GET_LABEL_IDLE'),
-        })
+    // List of items
+    root.ref.list = root.appendChildView(
+        root.createChildView(listScroller, { ...props, translateY: null })
     );
 
-    // List of items
-    root.ref.list = root.appendChildView(root.createChildView(listScroller, { translateY: null }));
+    // Field label
+    if (isSliderView) {
+        root.element.classList.add('filepond--slider');
+        const viewList = root.ref.list.childViews[0];
+        if (viewList) {
+            root.ref.label = viewList.childViews.at(-1);
+        }
+    } else {
+        root.ref.label = root.appendChildView(
+            root.createChildView(dropLabel, {
+                ...props,
+                translateY: null,
+                caption: root.query('GET_LABEL_IDLE'),
+            })
+        );
+    }
 
     // Background panel
     root.ref.panel = root.appendChildView(root.createChildView(panel, { name: 'panel-root' }));
@@ -8144,6 +8247,7 @@ const write$9 = ({ root, props, actions }) => {
     const aspectRatio = root.query('GET_PANEL_ASPECT_RATIO');
     const isMultiItem = root.query('GET_ALLOW_MULTIPLE');
     const totalItems = root.query('GET_TOTAL_ITEMS');
+    const isSliderView = root.query('GET_SLIDER_VIEW');
     const maxItems = isMultiItem ? root.query('GET_MAX_FILES') || MAX_FILES_LIMIT : 1;
     const atMaxCapacity = totalItems === maxItems;
 
@@ -8157,6 +8261,7 @@ const write$9 = ({ root, props, actions }) => {
 
         // hide label
         label.opacity = 0;
+        label.display = false;
 
         if (isMultiItem) {
             label.translateY = -40;
@@ -8173,14 +8278,23 @@ const write$9 = ({ root, props, actions }) => {
         label.opacity = 1;
         label.translateX = 0;
         label.translateY = 0;
+        label.display = true;
     }
 
     const listItemMargin = calculateListItemMargin(root);
 
     const listHeight = calculateListHeight(root);
 
-    const labelHeight = label.rect.element.height;
-    const currentLabelHeight = !isMultiItem || atMaxCapacity ? 0 : labelHeight;
+    let labelHeight = label.rect.element.height;
+
+    const itemList = list.childViews[0];
+    const scrollPadding =
+        itemList.element.scrollWidth > itemList.rect.element.width
+            ? scrollbarHeight(itemList.element)
+            : 0;
+
+    const currentLabelHeight =
+        !isMultiItem || atMaxCapacity || isSliderView ? scrollPadding : labelHeight;
 
     const listMarginTop = atMaxCapacity ? list.rect.element.marginTop : 0;
     const listMarginBottom = totalItems === 0 ? 0 : list.rect.element.marginBottom;
@@ -8189,8 +8303,10 @@ const write$9 = ({ root, props, actions }) => {
     const boundsHeight = currentLabelHeight + listMarginTop + listHeight.bounds + listMarginBottom;
 
     // link list to label bottom position
-    list.translateY =
-        Math.max(0, currentLabelHeight - list.rect.element.marginTop) - listItemMargin.top;
+    if (!isSliderView) {
+        list.translateY =
+            Math.max(0, currentLabelHeight - list.rect.element.marginTop) - listItemMargin.top;
+    }
 
     if (aspectRatio) {
         // fixed aspect ratio
@@ -8308,6 +8424,10 @@ const write$9 = ({ root, props, actions }) => {
     } else {
         // flexible height
 
+        if (isSliderView) {
+            labelHeight = label.rect.outer.height;
+        }
+
         // not a fixed height panel
         const itemMargin = totalItems > 0 ? listItemMargin.top + listItemMargin.bottom : 0;
         panel.scalable = true;
@@ -8369,8 +8489,12 @@ const calculateListHeight = root => {
     const verticalItemCount = children.length + newItem + removedItem;
     const itemsPerRow = getItemsPerRow(horizontalSpace, itemWidth);
 
+    if (root.query('GET_SLIDER_VIEW')) {
+        bounds = itemHeight;
+        visual = bounds;
+    }
     // stack
-    if (itemsPerRow === 1) {
+    else if (itemsPerRow === 1) {
         children.forEach(item => {
             const height = item.rect.element.height + itemVerticalMargin;
             bounds += height;
