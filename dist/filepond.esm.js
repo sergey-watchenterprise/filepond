@@ -6686,6 +6686,11 @@ const write$5 = ({ root, props, actions, shouldOptimize }) => {
 
     if (isSliderView) {
         children.push(root.ref.label);
+
+        // flag the list while a removal animation is in flight so CSS can suppress
+        // the scrollbar that would otherwise flash during the layout transition
+        const hasRemoving = root.childViews.some(c => c.markedForRemoval);
+        root.element.classList.toggle('filepond--list--animating', hasRemoving);
     }
 
     // get index
