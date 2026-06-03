@@ -105,14 +105,16 @@ const create = ({ root, props }) => {
     const canHover = window.matchMedia('(pointer: fine) and (hover: hover)').matches;
     const hasPointerEvents = 'PointerEvent' in window;
     if (root.query('GET_ALLOW_REORDER') && hasPointerEvents && !canHover) {
-        const prevent = e => {
+        root.ref.preventScrollAndZoom = e => {
             if (root.element.dataset.isReordering) {
                 e.preventDefault();
             }
-        }
+        };
 
-        root.element.addEventListener('touchmove', prevent, { passive: false });
-        root.element.addEventListener('gesturestart', prevent);
+        root.element.addEventListener('touchmove', root.ref.preventScrollAndZoom, {
+            passive: false,
+        });
+        root.element.addEventListener('gesturestart', root.ref.preventScrollAndZoom);
     }
 
     // add credits
@@ -691,8 +693,10 @@ export const root = createView({
         if (root.ref.hopper) {
             root.ref.hopper.destroy();
         }
-        root.element.removeEventListener('touchmove', prevent);
-        root.element.removeEventListener('gesturestart', prevent);
+        if (root.ref.preventScrollAndZoom) {
+            root.element.removeEventListener('touchmove', root.ref.preventScrollAndZoom);
+            root.element.removeEventListener('gesturestart', root.ref.preventScrollAndZoom);
+        }
     },
     mixins: {
         styles: ['height'],
