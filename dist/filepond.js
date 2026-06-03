@@ -11021,14 +11021,17 @@
         var canHover = window.matchMedia('(pointer: fine) and (hover: hover)').matches;
         var hasPointerEvents = 'PointerEvent' in window;
         if (root.query('GET_ALLOW_REORDER') && hasPointerEvents && !canHover) {
-            var _prevent = function _prevent(e) {
+            root.ref.preventScrollAndZoom = function(e) {
                 if (root.element.dataset.isReordering) {
                     e.preventDefault();
                 }
             };
 
-            root.element.addEventListener('touchmove', _prevent, { passive: false });
-            root.element.addEventListener('gesturestart', _prevent);
+            root.element.addEventListener('touchmove', root.ref.preventScrollAndZoom, {
+                passive: false,
+            });
+
+            root.element.addEventListener('gesturestart', root.ref.preventScrollAndZoom);
         }
 
         // add credits
@@ -11666,8 +11669,10 @@
             if (root.ref.hopper) {
                 root.ref.hopper.destroy();
             }
-            root.element.removeEventListener('touchmove', prevent);
-            root.element.removeEventListener('gesturestart', prevent);
+            if (root.ref.preventScrollAndZoom) {
+                root.element.removeEventListener('touchmove', root.ref.preventScrollAndZoom);
+                root.element.removeEventListener('gesturestart', root.ref.preventScrollAndZoom);
+            }
         },
         mixins: {
             styles: ['height'],
